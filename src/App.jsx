@@ -1,5 +1,44 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+
+const parseCsvLine = (line) => {
+  const result = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i]
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i += 1
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  result.push(current)
+  return result
+}
+
+const parseCsv = (text) => {
+  const lines = text.split(/\r?\n/).filter(Boolean)
+  if (!lines.length) return []
+  const header = parseCsvLine(lines[0])
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line)
+    return header.reduce((acc, key, index) => {
+      acc[key] = values[index] ?? ''
+      return acc
+    }, {})
+  })
+}
 
 const tabs = [
   { id: 'home', label: 'Hem', icon: 'home' },
@@ -24,32 +63,16 @@ const products = [
   {
     name: 'Automower 430X NERA',
     subtitle: 'Robotgräsklippare, upp till 3200 m²',
+    serial: 'Serienummer 970535221',
     price: '39 900 kr',
     oldPrice: '44 900 kr',
   },
   {
     name: 'R 214TC 103',
     subtitle: 'Åkgräsklippare med 103 cm combi-aggregat',
+    serial: 'Serienummer 970843001',
     price: '47 120 kr',
     oldPrice: '58 900 kr',
-  },
-  {
-    name: 'Trimmer 525iLXT',
-    subtitle: 'Batteritrimmer, låg vikt och hög effekt',
-    price: '5 990 kr',
-    oldPrice: '6 490 kr',
-  },
-  {
-    name: 'Häcksax 522iHD60',
-    subtitle: '60 cm svärd, låg vibration',
-    price: '6 490 kr',
-    oldPrice: '7 290 kr',
-  },
-  {
-    name: 'Lövblås 525iB',
-    subtitle: 'Batteridriven lövblås för proffs',
-    price: '4 990 kr',
-    oldPrice: '5 690 kr',
   },
 ]
 
@@ -111,10 +134,8 @@ const accountItems = [
 ]
 
 const toolItems = [
-  { title: 'Produktregistrering', subtitle: 'Registrera serienummer' },
-  { title: 'Skapa kampanjer', subtitle: 'Kampanjmallar och utskick' },
+  { title: 'Säljregistrering', subtitle: 'Registrera serienummer' },
   { title: 'Prislistor', subtitle: 'Uppdatera pris & rabatt' },
-  { title: 'Lagerstatus', subtitle: 'Tillgänglighet per artikel' },
   { title: 'Serviceärenden', subtitle: 'Skapa och följ upp' },
 ]
 
@@ -164,8 +185,10 @@ function Icon({ name }) {
       close: 'M6 6l12 12M18 6l-12 12',
       menu: 'M4 7h16M4 12h16M4 17h10',
       back: 'M15 6l-6 6 6 6',
-      heart: 'M12 21s-7-4.4-9-8.5C1.7 9.3 3.4 6 6.7 6c1.9 0 3.1 1 3.9 2 0.8-1 2-2 3.9-2 3.3 0 5 3.3 3.7 6.5C19 16.6 12 21 12 21Z',
+      list: 'M5 7h14M5 12h14M5 17h14M3 7h.01M3 12h.01M3 17h.01',
       share: 'M16 6a2 2 0 1 0-2-2M8 12a2 2 0 1 0-2-2m10 8a2 2 0 1 0-2-2M8 10l6-4M8 14l6 4',
+      marketing:
+        'M3 10l10-4v12L3 14v-4Zm10 0l7-2v8l-7-2M6 16v2a2 2 0 0 0 2 2h2v-3',
       tools:
         'M14 3l1 3 3 1-2 2 .6 3-2.6-1.3L11.4 12 12 9 10 7l3-1 1-3Zm-7 9 1.2 1.2-3.6 3.6-1.2-1.2 3.6-3.6Zm8.8.8 1.2-1.2 3.6 3.6-1.2 1.2-3.6-3.6Z',
       barcode:
@@ -200,32 +223,60 @@ function Header({ title, subtitle, onAccount }) {
   )
 }
 
-function ActionRow({ onShare }) {
+function ActionRow({ onShare, onMarketing, showMarketing = false }) {
+  const handleShare = onShare || (() => {})
+  const handleMarketing = onMarketing || (() => {})
   return (
-    <div className="action-row">
-      <button className="action-button" type="button" aria-label="Favorit">
-        <Icon name="heart" />
+    <div className={`action-row ${showMarketing ? 'action-row--four' : ''}`}>
+      {showMarketing ? (
+        <button
+          className="action-button"
+          type="button"
+          aria-label="Marknadsför"
+          onClick={(event) => {
+            event.stopPropagation()
+            handleMarketing()
+          }}
+        >
+          <Icon name="marketing" />
+        </button>
+      ) : null}
+      <button
+        className="action-button"
+        type="button"
+        aria-label="Spara i lista"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Icon name="list" />
       </button>
       <button
         className="action-button"
         type="button"
         aria-label="Dela"
-        onClick={onShare}
+        onClick={(event) => {
+          event.stopPropagation()
+          handleShare()
+        }}
       >
         <Icon name="share" />
       </button>
-      <button className="action-button success" type="button" aria-label="Lägg i varukorg">
+      <button
+        className="action-button success"
+        type="button"
+        aria-label="Lägg i varukorg"
+        onClick={(event) => event.stopPropagation()}
+      >
         <Icon name="cart" />
       </button>
     </div>
   )
 }
 
-function HomeScreen({ onAccount, onOpenProduct, onShare }) {
+function HomeScreen({ onAccount, onOpenProduct, onOpenDeliveries, onShare, onMarketing }) {
   return (
     <section className="screen">
       <Header title="Hem" onAccount={onAccount} />
-      <button className="primary-cta" type="button">
+      <button className="primary-cta" type="button" onClick={onOpenDeliveries}>
         Kommande leveranser
       </button>
 
@@ -245,45 +296,65 @@ function HomeScreen({ onAccount, onOpenProduct, onShare }) {
       </div>
 
       <div className="section-header">
-        <h2>Populära produkter</h2>
+        <h2>Populära</h2>
         <button className="text-button" type="button">
           Se sortiment <Icon name="chevron" />
         </button>
       </div>
       <div className="product-list">
-        {products.map((product) => (
-          <article key={product.name} className="product-card">
-            <div className="product-image">
-              <span>{product.name.slice(0, 1)}</span>
-            </div>
+        {products.map((product) => {
+          const openProduct = () =>
+            product.name === 'Automower 430X NERA'
+              ? onOpenProduct('automower-430x-nera')
+              : product.name === 'R 214TC 103'
+                ? onOpenProduct('r-214tc-103')
+                : null
+
+          return (
+            <article
+              key={product.name}
+              className="product-card clickable no-thumb"
+              role="button"
+              tabIndex={0}
+              onClick={openProduct}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  openProduct()
+                }
+              }}
+            >
+            <div className="product-image-spacer" />
             <div className="product-info">
               <div className="product-title">
                 <h3>{product.name}</h3>
               </div>
               <p>{product.subtitle}</p>
+              <p className="product-serial">{product.serial}</p>
               <div className="price-row">
                 <strong>{product.price}</strong>
-                <span className="old-price">{product.oldPrice}</span>
               </div>
               <div className="product-actions">
                 <button
                   className="text-button"
                   type="button"
-                  onClick={() =>
-                    product.name === 'Automower 430X NERA'
-                      ? onOpenProduct('automower-430x-nera')
-                      : product.name === 'R 214TC 103'
-                        ? onOpenProduct('r-214tc-103')
-                      : null
-                  }
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openProduct()
+                  }}
                 >
                   Öppna <Icon name="chevron" />
                 </button>
               </div>
-              <ActionRow onShare={() => onShare(product.name)} />
+              <ActionRow
+                onShare={() => onShare(product.name)}
+                onMarketing={() => onMarketing(product.name)}
+                showMarketing
+              />
             </div>
           </article>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
@@ -436,10 +507,296 @@ function AccountScreen({ onAccount }) {
   )
 }
 
-function ToolsScreen({ onAccount }) {
-  return (
+function ToolsScreen({ onAccount, view = 'list', onViewChange = () => {} }) {
+  const setView = onViewChange
+  const registrationTrend = [24, 32, 28, 40, 46, 54, 48]
+  const bestSellers = [
+    { label: 'Automower 430X NERA', value: 86 },
+    { label: 'R 214TC 103', value: 64 },
+    { label: 'Automower 450X NERA', value: 52 },
+  ]
+  const topAccessories = [
+    { label: 'Installationskit Medium', value: 72 },
+    { label: 'Automower Endurance knivar', value: 61 },
+    { label: 'Batteri 40-B140', value: 45 },
+  ]
+  const topSpares = [
+    { label: 'Knivdisk 3‑pack', value: 58 },
+    { label: 'Luftfilter kit', value: 41 },
+    { label: 'Hjulnav fram', value: 33 },
+  ]
+  const priceTagItems = [
+    { name: 'Automower 430X NERA', sku: '970535221', size: 'A6' },
+    { name: 'R 214TC 103', sku: '970843001', size: 'A6' },
+    { name: 'Automower 450X NERA', sku: '970535321', size: 'A6' },
+    { name: 'Batteri BLi200X', sku: '967091401', size: 'A7' },
+  ]
+  const marketingPrintItems = [
+    { name: 'Butiksaffisch A3', note: 'Produktnyheter & kampanjyta' },
+    { name: 'Hylla‑wobbler A6', note: 'Pris & USP på hyllkant' },
+    { name: 'Broschyr pack (20 st)', note: 'Automower + rider' },
+  ]
+  const [priceTagQuantities, setPriceTagQuantities] = useState(
+    () =>
+      priceTagItems.reduce((acc, item) => {
+        acc[item.sku] = 0
+        return acc
+      }, {}),
+  )
+  const [printQuantities, setPrintQuantities] = useState(
+    () =>
+      marketingPrintItems.reduce((acc, item) => {
+        acc[item.name] = 0
+        return acc
+      }, {}),
+  )
+  const maxRegistration = Math.max(...registrationTrend)
+  const maxBest = Math.max(...bestSellers.map((item) => item.value))
+  const maxAccessories = Math.max(...topAccessories.map((item) => item.value))
+  const maxSpares = Math.max(...topSpares.map((item) => item.value))
+
+  return view === 'analytics' ? (
     <section className="screen">
-      <Header title="Verktyg" subtitle="Administration" onAccount={onAccount} />
+      <div className="detail-header">
+        <button className="icon-button" type="button" onClick={() => setView('list')}>
+          <Icon name="back" />
+        </button>
+        <div>
+          <p className="eyebrow">Verktyg</p>
+          <h1>Analytics</h1>
+        </div>
+      </div>
+      <div className="section-header">
+        <h2>Senaste 30 dagarna</h2>
+      </div>
+      <div className="analytics-grid">
+        <article className="analytics-card">
+          <h3>Produktregistreringar</h3>
+          <p className="chart-caption">Veckotrend</p>
+          <div className="sparkline">
+            {registrationTrend.map((value, index) => (
+              <span
+                key={`reg-${index}`}
+                className="spark-bar"
+                style={{ height: `${Math.round((value / maxRegistration) * 100)}%` }}
+              />
+            ))}
+          </div>
+        </article>
+        <article className="analytics-card">
+          <h3>Mest sålda produkter</h3>
+          <div className="bar-list">
+            {bestSellers.map((item) => (
+              <div key={item.label} className="bar-row">
+                <span>{item.label}</span>
+                <div className="bar-track">
+                  <div
+                    className="bar-fill"
+                    style={{ width: `${Math.round((item.value / maxBest) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="analytics-card">
+          <h3>Mest sålda tillbehör</h3>
+          <div className="bar-list">
+            {topAccessories.map((item) => (
+              <div key={item.label} className="bar-row">
+                <span>{item.label}</span>
+                <div className="bar-track">
+                  <div
+                    className="bar-fill"
+                    style={{ width: `${Math.round((item.value / maxAccessories) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="analytics-card">
+          <h3>Mest sålda reservdelar</h3>
+          <div className="bar-list">
+            {topSpares.map((item) => (
+              <div key={item.label} className="bar-row">
+                <span>{item.label}</span>
+                <div className="bar-track">
+                  <div
+                    className="bar-fill"
+                    style={{ width: `${Math.round((item.value / maxSpares) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
+    </section>
+  ) : view === 'price-tags' ? (
+    <section className="screen">
+      <div className="detail-header">
+        <button className="icon-button" type="button" onClick={() => setView('list')}>
+          <Icon name="back" />
+        </button>
+        <div>
+          <p className="eyebrow">Verktyg</p>
+          <h1>Prisskyltar</h1>
+        </div>
+      </div>
+      <p className="helper-text">Välj antal prisskyltar per produkt för nästa utskick.</p>
+      <div className="price-tag-list">
+        {priceTagItems.map((item) => (
+          <article key={item.sku} className="price-tag-row">
+            <div>
+              <p>{item.name}</p>
+              <span>
+                Art.nr {item.sku} · Format {item.size}
+              </span>
+            </div>
+            <div className="quantity-stepper">
+              <button
+                className="icon-button compact"
+                type="button"
+                aria-label={`Minska antal för ${item.name}`}
+                onClick={() =>
+                  setPriceTagQuantities((prev) => ({
+                    ...prev,
+                    [item.sku]: Math.max(0, prev[item.sku] - 1),
+                  }))
+                }
+              >
+                −
+              </button>
+              <strong>{priceTagQuantities[item.sku]}</strong>
+              <button
+                className="icon-button compact"
+                type="button"
+                aria-label={`Öka antal för ${item.name}`}
+                onClick={() =>
+                  setPriceTagQuantities((prev) => ({
+                    ...prev,
+                    [item.sku]: prev[item.sku] + 1,
+                  }))
+                }
+              >
+                +
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <button className="primary-cta" type="button">
+        Skicka beställning
+      </button>
+    </section>
+  ) : view === 'marketing' ? (
+    <section className="screen">
+      <div className="detail-header">
+        <button className="icon-button" type="button" onClick={() => setView('list')}>
+          <Icon name="back" />
+        </button>
+        <div>
+          <p className="eyebrow">Verktyg</p>
+          <h1>Marknadsföringsmaterial</h1>
+        </div>
+      </div>
+      <div className="detail-section">
+        <h2>Tryckt material</h2>
+        <p className="helper-text">Välj antal per material och skicka beställning.</p>
+        <div className="price-tag-list">
+          {marketingPrintItems.map((item) => (
+            <article key={item.name} className="price-tag-row">
+              <div>
+                <p>{item.name}</p>
+                <span>{item.note}</span>
+              </div>
+              <div className="quantity-stepper">
+                <button
+                  className="icon-button compact"
+                  type="button"
+                  aria-label={`Minska antal för ${item.name}`}
+                  onClick={() =>
+                    setPrintQuantities((prev) => ({
+                      ...prev,
+                      [item.name]: Math.max(0, prev[item.name] - 1),
+                    }))
+                  }
+                >
+                  −
+                </button>
+                <strong>{printQuantities[item.name]}</strong>
+                <button
+                  className="icon-button compact"
+                  type="button"
+                  aria-label={`Öka antal för ${item.name}`}
+                  onClick={() =>
+                    setPrintQuantities((prev) => ({
+                      ...prev,
+                      [item.name]: prev[item.name] + 1,
+                    }))
+                  }
+                >
+                  +
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        <button className="primary-cta" type="button">
+          Beställ tryckt material
+        </button>
+      </div>
+      <div className="detail-section">
+        <h2>Digitala kampanjer</h2>
+        <div className="marketing-actions">
+          <button className="secondary-cta" type="button">
+            Skapa kampanjbrief
+          </button>
+          <button className="secondary-cta ghost" type="button">
+            Få hjälp med annonser
+          </button>
+        </div>
+        <div className="tip-list">
+          <div className="tip-row">
+            <span>Förifylld mall med målgrupp och budget.</span>
+            <strong>2 min</strong>
+          </div>
+          <div className="tip-row">
+            <span>Färdiga annonser för Automower & rider.</span>
+            <strong>8 st</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  ) : (
+    <section className="screen">
+      <Header title="Verktyg" subtitle="Översikt" onAccount={onAccount} />
+      <h2 className="section-title">Marknadsföring</h2>
+      <div className="account-list">
+        <button className="account-row" type="button" onClick={() => setView('marketing')}>
+          <div>
+            <p>Marknadsföringsmaterial</p>
+            <span>Tryck & digitala kampanjer</span>
+          </div>
+          <Icon name="chevron" />
+        </button>
+        <button className="account-row" type="button" onClick={() => setView('price-tags')}>
+          <div>
+            <p>Prisskyltar</p>
+            <span>Beställ skyltar per produkt</span>
+          </div>
+          <Icon name="chevron" />
+        </button>
+        <button className="account-row" type="button" onClick={() => setView('analytics')}>
+          <div>
+            <p>Analytics</p>
+            <span>Trender och topplistor</span>
+          </div>
+          <Icon name="chevron" />
+        </button>
+      </div>
+      <h2 className="section-title">Administration</h2>
       <div className="account-list">
         {toolItems.map((item) => (
           <button key={item.title} className="account-row" type="button">
@@ -455,6 +812,72 @@ function ToolsScreen({ onAccount }) {
   )
 }
 function ProductDetail({ onBack, onShare }) {
+  const [explodedParts, setExplodedParts] = useState([])
+  const [dataStatus, setDataStatus] = useState('loading')
+  const [selectedAssembly, setSelectedAssembly] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [imageOpen, setImageOpen] = useState(false)
+  const [imageUrl, setImageUrl] = useState('')
+
+  useEffect(() => {
+    const url = `${import.meta.env.BASE_URL}automower-430x-exploded.csv`
+    fetch(url)
+      .then((response) => response.text())
+      .then((text) => {
+        const rows = parseCsv(text).map((row) => ({
+          assemblyId: row['Sprängskiss-ID'],
+          assemblyName: row['Sprängskiss-namn'],
+          ref: row.Referens,
+          partNo: row['Art.nr'],
+          partName: row.Artikelnamn,
+          qty: row.Mängd,
+          comment: row.Kommentar,
+          link: row.Länk,
+          image: row['Sprängskiss-bild'],
+          coords: row.Koordinater,
+        }))
+        setExplodedParts(rows)
+        if (rows[0]?.assemblyName) {
+          setSelectedAssembly(rows[0].assemblyName)
+        }
+        setDataStatus(rows.length ? 'ready' : 'error')
+      })
+      .catch(() => {
+        setExplodedParts([])
+        setDataStatus('error')
+      })
+  }, [])
+
+  const assemblies = useMemo(() => {
+    const map = new Map()
+    explodedParts.forEach((row) => {
+      if (!map.has(row.assemblyName)) {
+        map.set(row.assemblyName, {
+          name: row.assemblyName,
+          image: row.image,
+        })
+      }
+    })
+    return Array.from(map.values())
+  }, [explodedParts])
+
+  const activeAssembly = assemblies.find((item) => item.name === selectedAssembly)
+  const filteredParts = useMemo(() => {
+    return explodedParts.filter((row) => {
+      const matchesAssembly = row.assemblyName === selectedAssembly
+      const query = searchTerm.trim().toLowerCase()
+      if (!query) return matchesAssembly
+      const name = (row.partName || '').toLowerCase()
+      const partNo = (row.partNo || '').toLowerCase()
+      const ref = (row.ref || '').toLowerCase()
+      return (
+        matchesAssembly &&
+        (name.includes(query) || partNo.includes(query) || ref.includes(query))
+      )
+    })
+  }, [explodedParts, selectedAssembly, searchTerm])
+  const activeImage = activeAssembly?.image || filteredParts[0]?.image || ''
+
   return (
     <section className="screen product-detail">
       <div className="detail-header">
@@ -468,7 +891,12 @@ function ProductDetail({ onBack, onShare }) {
       </div>
 
       <div className="detail-hero">
-        <div className="hero-image">430X</div>
+        <div className="hero-image">
+          <img
+            src="https://media.husqvarnagroup.com/image/H310-1611.png?canvas=800%2C440&fit=bounds&height=440&width=800"
+            alt="Automower 430X NERA"
+          />
+        </div>
         <div>
           <p className="detail-subtitle">
             Robotgräsklippare som undviker föremål för gräsmattor upp till 3200 m².
@@ -516,13 +944,75 @@ function ProductDetail({ onBack, onShare }) {
       </div>
 
       <div className="detail-section">
-        <h2>Sprängskiss</h2>
-        <div className="exploded-card">
-          <p>Sprängskiss finns som dokument.</p>
-          <button className="secondary-cta" type="button">
-            Gå till dokument
-          </button>
+        <h2>Sprängskiss & delar</h2>
+        <div className="exploded-toolbar">
+          <select
+            className="select"
+            value={selectedAssembly}
+            onChange={(event) => setSelectedAssembly(event.target.value)}
+          >
+            {assemblies.map((item) => (
+              <option key={item.name} value={item.name}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          <label className="search-input compact">
+            <Icon name="search" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Sök ref, art.nr eller namn"
+            />
+          </label>
         </div>
+
+        {dataStatus === 'loading' ? (
+          <p className="helper-text">Laddar sprängskiss…</p>
+        ) : null}
+        {dataStatus === 'error' ? (
+          <p className="helper-text">Kunde inte läsa sprängskissen.</p>
+        ) : null}
+
+        {activeImage ? (
+          <button
+            className="exploded-image"
+            type="button"
+            onClick={() => {
+              setImageUrl(activeImage)
+              setImageOpen(true)
+            }}
+          >
+            <img src={activeImage} alt={activeAssembly?.name || 'Sprängskiss'} />
+            <span>Tryck för att zooma</span>
+          </button>
+        ) : null}
+
+        <div className="part-list">
+          {filteredParts.slice(0, 12).map((part) => (
+            <article key={`${part.assemblyId}-${part.ref}`} className="part-row">
+              <div>
+                <p>
+                  #{part.ref} · {part.partName}
+                </p>
+                <span>
+                  Art.nr {part.partNo} · {part.qty} st
+                  {part.comment ? ` · ${part.comment}` : ''}
+                </span>
+              </div>
+              <div className="part-actions">
+                <a className="link-button" href={part.link} target="_blank" rel="noreferrer">
+                  Öppna artikel
+                </a>
+                <ActionRow onShare={() => onShare(`${part.partName} ${part.partNo}`)} />
+              </div>
+            </article>
+          ))}
+        </div>
+        {filteredParts.length > 12 ? (
+          <p className="helper-text">Visa fler delar genom att filtrera.</p>
+        ) : null}
       </div>
 
       <div className="detail-section">
@@ -625,6 +1115,25 @@ function ProductDetail({ onBack, onShare }) {
           </button>
         </div>
       </div>
+
+      {imageOpen ? (
+        <section className="search-overlay">
+          <div className="search-panel image-panel">
+            <div className="search-header">
+              <div>
+                <p className="eyebrow">Sprängskiss</p>
+                <h2>{activeAssembly?.name}</h2>
+              </div>
+              <button className="close-button" type="button" onClick={() => setImageOpen(false)}>
+                <Icon name="close" />
+              </button>
+            </div>
+            <div className="image-wrapper">
+              <img src={imageUrl} alt={activeAssembly?.name || 'Sprängskiss'} />
+            </div>
+          </div>
+        </section>
+      ) : null}
     </section>
   )
 }
@@ -694,7 +1203,7 @@ function ShareOverlay({ item, onClose }) {
           <button className="action-button" type="button" onClick={onClose}>
             Avbryt
           </button>
-          <button className="action-button primary" type="button">
+          <button className="action-button success" type="button">
             Dela via telefon
           </button>
         </div>
@@ -704,8 +1213,76 @@ function ShareOverlay({ item, onClose }) {
 }
 
 function RiderDetail({ onBack, onShare }) {
+  const scrollRef = useRef(null)
+  const explodedRef = useRef(null)
+  const [explodedParts, setExplodedParts] = useState([])
+  const [dataStatus, setDataStatus] = useState('loading')
+  const [selectedAssembly, setSelectedAssembly] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [imageOpen, setImageOpen] = useState(false)
+  const [imageUrl, setImageUrl] = useState('')
+
+  useEffect(() => {
+    const url = `${import.meta.env.BASE_URL}r214tc-exploded.csv`
+    fetch(url)
+      .then((response) => response.text())
+      .then((text) => {
+        const rows = parseCsv(text).map((row) => ({
+          assemblyId: row['Sprängskiss-ID'],
+          assemblyName: row['Sprängskiss-namn'],
+          ref: row.Referens,
+          partNo: row['Art.nr'],
+          partName: row.Artikelnamn,
+          qty: row.Mängd,
+          comment: row.Kommentar,
+          link: row.Länk,
+          image: row['Sprängskiss-bild'],
+          coords: row.Koordinater,
+        }))
+        setExplodedParts(rows)
+        if (rows[0]?.assemblyName) {
+          setSelectedAssembly(rows[0].assemblyName)
+        }
+        setDataStatus(rows.length ? 'ready' : 'error')
+      })
+      .catch(() => {
+        setExplodedParts([])
+        setDataStatus('error')
+      })
+  }, [])
+
+  const assemblies = useMemo(() => {
+    const map = new Map()
+    explodedParts.forEach((row) => {
+      if (!map.has(row.assemblyName)) {
+        map.set(row.assemblyName, {
+          name: row.assemblyName,
+          image: row.image,
+        })
+      }
+    })
+    return Array.from(map.values())
+  }, [explodedParts])
+
+  const activeAssembly = assemblies.find((item) => item.name === selectedAssembly)
+  const filteredParts = useMemo(() => {
+    return explodedParts.filter((row) => {
+      const matchesAssembly = row.assemblyName === selectedAssembly
+      const query = searchTerm.trim().toLowerCase()
+      if (!query) return matchesAssembly
+      const name = (row.partName || '').toLowerCase()
+      const partNo = (row.partNo || '').toLowerCase()
+      const ref = (row.ref || '').toLowerCase()
+      return (
+        matchesAssembly &&
+        (name.includes(query) || partNo.includes(query) || ref.includes(query))
+      )
+    })
+  }, [explodedParts, selectedAssembly, searchTerm])
+  const activeImage = activeAssembly?.image || filteredParts[0]?.image || ''
+
   return (
-    <section className="screen product-detail">
+    <section className="screen product-detail" ref={scrollRef}>
       <div className="detail-header">
         <button className="icon-button" type="button" onClick={onBack}>
           <Icon name="back" />
@@ -717,7 +1294,12 @@ function RiderDetail({ onBack, onShare }) {
       </div>
 
       <div className="detail-hero">
-        <div className="hero-image">R 214TC</div>
+        <div className="hero-image">
+          <img
+            src="https://media.husqvarnagroup.com/image/KH-459456.png?canvas=800%2C440&fit=bounds&height=440&width=800"
+            alt="R 214TC 103"
+          />
+        </div>
         <div>
           <p className="detail-subtitle">
             Mångsidig och lättanvänd åkgräsklippare med 103 cm combi-aggregat och
@@ -766,13 +1348,75 @@ function RiderDetail({ onBack, onShare }) {
       </div>
 
       <div className="detail-section">
-        <h2>Sprängskiss</h2>
-        <div className="exploded-card">
-          <p>Sprängskiss finns som dokument.</p>
-          <button className="secondary-cta" type="button">
-            Gå till dokument
-          </button>
+        <h2>Sprängskiss & delar</h2>
+        <div className="exploded-toolbar">
+          <select
+            className="select"
+            value={selectedAssembly}
+            onChange={(event) => setSelectedAssembly(event.target.value)}
+          >
+            {assemblies.map((item) => (
+              <option key={item.name} value={item.name}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          <label className="search-input compact">
+            <Icon name="search" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Sök ref, art.nr eller namn"
+            />
+          </label>
         </div>
+
+        {dataStatus === 'loading' ? (
+          <p className="helper-text">Laddar sprängskiss…</p>
+        ) : null}
+        {dataStatus === 'error' ? (
+          <p className="helper-text">Kunde inte läsa sprängskissen.</p>
+        ) : null}
+
+        {activeImage ? (
+          <button
+            className="exploded-image"
+            type="button"
+            onClick={() => {
+              setImageUrl(activeImage)
+              setImageOpen(true)
+            }}
+          >
+            <img src={activeImage} alt={activeAssembly?.name || 'Sprängskiss'} />
+            <span>Tryck för att zooma</span>
+          </button>
+        ) : null}
+
+        <div className="part-list">
+          {filteredParts.slice(0, 12).map((part) => (
+            <article key={`${part.assemblyId}-${part.ref}`} className="part-row">
+              <div>
+                <p>
+                  #{part.ref} · {part.partName}
+                </p>
+                <span>
+                  Art.nr {part.partNo} · {part.qty} st
+                  {part.comment ? ` · ${part.comment}` : ''}
+                </span>
+              </div>
+              <div className="part-actions">
+                <a className="link-button" href={part.link} target="_blank" rel="noreferrer">
+                  Öppna artikel
+                </a>
+                <ActionRow onShare={() => onShare(`${part.partName} ${part.partNo}`)} />
+              </div>
+            </article>
+          ))}
+        </div>
+        {filteredParts.length > 12 ? (
+          <p className="helper-text">Visa fler delar genom att filtrera.</p>
+        ) : null}
       </div>
 
       <div className="detail-section">
@@ -873,6 +1517,89 @@ function RiderDetail({ onBack, onShare }) {
             Försäkran om överensstämmelse
             <Icon name="chevron" />
           </button>
+        </div>
+      </div>
+
+      {imageOpen ? (
+        <section className="search-overlay">
+          <div className="search-panel image-panel">
+            <div className="search-header">
+              <div>
+                <p className="eyebrow">Sprängskiss</p>
+                <h2>{activeAssembly?.name}</h2>
+              </div>
+              <button className="close-button" type="button" onClick={() => setImageOpen(false)}>
+                <Icon name="close" />
+              </button>
+            </div>
+            <div className="image-wrapper">
+              <img src={imageUrl} alt={activeAssembly?.name} />
+            </div>
+          </div>
+        </section>
+      ) : null}
+    </section>
+  )
+}
+
+function DeliveriesScreen({ onBack }) {
+  return (
+    <section className="screen">
+      <div className="detail-header">
+        <button className="icon-button" type="button" onClick={onBack}>
+          <Icon name="back" />
+        </button>
+        <div>
+          <p className="eyebrow">Logistik</p>
+          <h1>Kommande leveranser</h1>
+        </div>
+      </div>
+
+      <div className="detail-section">
+        <h2>Denna vecka</h2>
+        <div className="detail-cards">
+          <article>
+            <p>Ons 12 feb • Stockholm</p>
+            <span>08:30–11:30 · 14 artiklar</span>
+            <div className="delivery-actions">
+              <button className="action-button" type="button">
+                Detaljer
+              </button>
+            </div>
+          </article>
+          <article>
+            <p>Fre 14 feb • Stockholm</p>
+            <span>13:00–16:00 · 8 artiklar</span>
+            <div className="delivery-actions">
+              <button className="action-button" type="button">
+                Detaljer
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div className="detail-section">
+        <h2>Kommande</h2>
+        <div className="detail-cards">
+          <article>
+            <p>Tis 18 feb • Stockholm</p>
+            <span>09:00–12:00 · 21 artiklar</span>
+            <div className="delivery-actions">
+              <button className="action-button" type="button">
+                Detaljer
+              </button>
+            </div>
+          </article>
+          <article>
+            <p>Tor 20 feb • Stockholm</p>
+            <span>10:00–12:30 · 6 artiklar</span>
+            <div className="delivery-actions">
+              <button className="action-button" type="button">
+                Detaljer
+              </button>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -1020,10 +1747,20 @@ function App() {
   const [productOpen, setProductOpen] = useState(null)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [shareItem, setShareItem] = useState(null)
+  const [deliveriesOpen, setDeliveriesOpen] = useState(false)
+  const [toolsView, setToolsView] = useState('list')
   const handleAccount = () => setActiveTab('account')
   const handleOpenProduct = (id) => setProductOpen(id)
   const handleBack = () => setProductOpen(null)
   const handleShare = (item) => setShareItem(item)
+  const handleOpenDeliveries = () => setDeliveriesOpen(true)
+  const handleCloseDeliveries = () => setDeliveriesOpen(false)
+  const handleOpenMarketing = () => {
+    setActiveTab('tools')
+    setToolsView('marketing')
+    setProductOpen(null)
+    setDeliveriesOpen(false)
+  }
 
   return (
     <div className="app">
@@ -1035,27 +1772,34 @@ function App() {
         {productOpen === 'r-214tc-103' ? (
           <RiderDetail onBack={handleBack} onShare={handleShare} />
         ) : null}
-        {!productOpen && activeTab === 'home' && (
+        {deliveriesOpen && <DeliveriesScreen onBack={handleCloseDeliveries} />}
+        {!productOpen && !deliveriesOpen && activeTab === 'home' && (
           <HomeScreen
             onAccount={handleAccount}
             onOpenProduct={handleOpenProduct}
+            onOpenDeliveries={handleOpenDeliveries}
             onShare={handleShare}
+            onMarketing={handleOpenMarketing}
           />
         )}
-        {!productOpen && activeTab === 'categories' && (
+        {!productOpen && !deliveriesOpen && activeTab === 'categories' && (
           <CategoriesScreen onAccount={handleAccount} />
         )}
-        {!productOpen && activeTab === 'guide' && (
+        {!productOpen && !deliveriesOpen && activeTab === 'guide' && (
           <GuideScreen onAccount={handleAccount} />
         )}
-        {!productOpen && activeTab === 'cart' && (
+        {!productOpen && !deliveriesOpen && activeTab === 'cart' && (
           <CartScreen onAccount={handleAccount} />
         )}
-        {!productOpen && activeTab === 'account' && (
+        {!productOpen && !deliveriesOpen && activeTab === 'account' && (
           <AccountScreen onAccount={handleAccount} />
         )}
-        {!productOpen && activeTab === 'tools' && (
-          <ToolsScreen onAccount={handleAccount} />
+        {!productOpen && !deliveriesOpen && activeTab === 'tools' && (
+          <ToolsScreen
+            onAccount={handleAccount}
+            view={toolsView}
+            onViewChange={setToolsView}
+          />
         )}
 
         <button
